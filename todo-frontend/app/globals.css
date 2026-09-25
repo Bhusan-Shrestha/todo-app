@@ -1,0 +1,200 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: #f5f6f8;
+  color: #1a1a1a;
+}
+
+/* Two-column page: todo list on the left, stats panel on the right.
+   Falls back to a single column on narrow screens. */
+.page-layout {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 48px 20px;
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.container {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+}
+
+@media (max-width: 720px) {
+  .page-layout {
+    flex-direction: column;
+  }
+}
+
+h1 {
+  font-size: 28px;
+  margin-bottom: 24px;
+}
+
+.error-banner {
+  background: #fdecea;
+  color: #611a15;
+  border: 1px solid #f5c2c0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.todo-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.todo-form input[type='text'] {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #d7d9dd;
+  border-radius: 8px;
+  font-size: 15px;
+}
+
+.todo-form button,
+.todo-item button {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  padding: 10px 16px;
+}
+
+.todo-form button {
+  background: #2563eb;
+  color: white;
+}
+
+.todo-form button:disabled {
+  background: #93b4f0;
+  cursor: not-allowed;
+}
+
+.todo-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.todo-item .title {
+  flex: 1;
+  font-size: 15px;
+}
+
+.todo-item.completed .title {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.todo-item .delete-btn {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.todo-item .delete-btn:hover {
+  background: #fecaca;
+}
+
+.empty-state {
+  text-align: center;
+  color: #9ca3af;
+  padding: 32px 0;
+}
+
+/* --- Stats panel (right-hand sidebar showing live todo stats) --- */
+.stats-panel {
+  width: 220px;
+  flex-shrink: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  position: sticky;
+  top: 48px;
+}
+
+.stats-panel-title {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  margin: 0 0 12px;
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f1f3;
+}
+
+.stats-row:last-of-type {
+  border-bottom: none;
+}
+
+.stats-label {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.stats-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.stats-rate-bar {
+  height: 8px;
+  background: #f0f1f3;
+  border-radius: 4px;
+  margin-top: 14px;
+  overflow: hidden;
+}
+
+.stats-rate-fill {
+  height: 100%;
+  background: #2563eb;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.stats-rate-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 6px 0 0;
+}
+
+.stats-oldest {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #f0f1f3;
+}
+
+.stats-oldest-title {
+  font-size: 13px;
+  margin: 4px 0 0;
+  color: #1a1a1a;
+}

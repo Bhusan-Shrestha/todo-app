@@ -1,0 +1,45 @@
+services:
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    hostname: app-server
+    restart: unless-stopped
+
+    volumes:
+      # Alloy's own config and internal state
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+
+      # Host filesystem, read-only, so node_exporter reports the real
+      # host's CPU/memory/disk instead of the Alloy container's own
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+
+      # Docker socket, read-only, for discovering containers and
+      # tailing their logs for Loki
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    ports:
+      # Alloy's UI -- loopback only, not for the outside world
+      - "127.0.0.1:12345:12345"
+      # NOTE: 4317/4318 (OTLP) are intentionally NOT published here.
+      # The backend reaches Alloy directly over the "otel-net" network
+      # by service name (http://alloy:4318/...), so there's no need to
+      # expose these ports on the host at all.
+
+    command:
+      - "run"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--stability.level=public-preview"
+      - "/etc/alloy/config.alloy"
+
+    networks:
+      - otel-net
+
+volumes:
+  alloy-data:
+
+networks:
+  otel-net:
+    external: true

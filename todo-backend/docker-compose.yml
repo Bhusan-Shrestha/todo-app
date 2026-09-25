@@ -1,0 +1,68 @@
+services:
+  backend:
+    image: bhushanportpro/todo-backend:v1
+
+    deploy:
+      restart_policy:
+        condition: any
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+
+    ports:
+      - target: 4000
+        published: 4000
+        protocol: tcp
+        mode: host
+
+    env_file:
+      - .env
+
+    environment:
+      STATS_SERVICE_URL: http://todo-stats:5000
+
+    networks:
+      - otel-net
+      - app-net 
+  todo-stats:
+    image: bhushanportpro/todo-stats:v1
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker      
+        preferences:
+          - spread: node.id        
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+    environment:
+      PORT: "5000"
+      NODE_ENV: production
+      NODE_NAME: "{{.Node.Hostname}}"  
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5000/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+    networks:
+      - app-net
+
+networks:
+  otel-net:
+    external: true
+  app-net:
+    driver: overlay

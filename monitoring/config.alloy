@@ -1,0 +1,189 @@
+// ============================================================
+// 1. RECEIVE OTLP DATA FROM TODO BACKEND
+//    Backend sends to http://alloy:4318 over otel-net
+//    (the OTLP library adds /v1/traces and /v1/metrics itself)
+// ============================================================
+
+otelcol.receiver.otlp "backend" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    traces = [
+      otelcol.exporter.otlp.to_tempo.input,
+    ]
+
+    metrics = [
+      otelcol.exporter.prometheus.to_prometheus.input,
+    ]
+  }
+}
+
+
+// ============================================================
+// 2. TRACES → TEMPO (monitoring server)
+// ============================================================
+
+otelcol.exporter.otlp "to_tempo" {
+  client {
+    endpoint = "10.2.1.164:4317"
+
+    tls {
+      insecure = true
+    }
+  }
+}
+
+
+// ============================================================
+// 3. OTLP METRICS → PROMETHEUS
+// ============================================================
+
+otelcol.exporter.prometheus "to_prometheus" {
+  forward_to = [
+    prometheus.remote_write.to_prometheus.receiver,
+  ]
+}
+
+
+// ============================================================
+// 4. PROMETHEUS REMOTE WRITE (monitoring server)
+// ============================================================
+
+prometheus.remote_write "to_prometheus" {
+  endpoint {
+    url = "http://10.2.1.164:9090/api/v1/write"
+  }
+}
+
+
+// ============================================================
+// 5. LINUX HOST METRICS
+//    (paths match the /proc, /sys and / mounts in docker-compose.yml)
+// ============================================================
+
+prometheus.exporter.unix "node" {
+  procfs_path = "/host/proc"
+  sysfs_path  = "/host/sys"
+  rootfs_path = "/host/root"
+}
+
+
+// ============================================================
+// 6. SCRAPE LINUX HOST METRICS (every 15s so rate() panels work)
+// ============================================================
+
+prometheus.scrape "node" {
+  targets         = prometheus.exporter.unix.node.targets
+  job_name        = "node"
+  scrape_interval = "15s"
+
+  forward_to = [
+    prometheus.remote_write.to_prometheus.receiver,
+  ]
+}
+
+
+// ============================================================
+// 7. LOKI DESTINATION (monitoring server)
+// ============================================================
+
+loki.write "to_loki" {
+  endpoint {
+    url = "http://10.2.1.164:3100/loki/api/v1/push"
+  }
+}
+
+
+// ============================================================
+// 8. NGINX LOGS (nginx runs on the host, not in Docker)
+//    The host's / is mounted at /host/root inside the Alloy container
+// ============================================================
+
+local.file_match "nginx_logs" {
+  path_targets = [
+    { __path__ = "/host/root/var/log/nginx/*.log", job = "nginx", host = "app-server" },
+  ]
+}
+
+loki.source.file "nginx" {
+  targets    = local.file_match.nginx_logs.targets
+  forward_to = [loki.write.to_loki.receiver]
+}
+
+
+// ============================================================
+// 9. DOCKER CONTAINER LOGS (backend, etc.)
+//    Uses the docker.sock mount that docker-compose.yml already has
+// ============================================================
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  // container name without the leading "/"
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  // NEW: Swarm service name, e.g. todo-backend_backend. Unlike the container
+  // name, it does not change on every deploy, so it is best for queries.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_swarm_service_name"]
+    target_label  = "service"
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "docker"
+  }
+
+  rule {
+    target_label = "host"
+    replacement  = "app-server"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.write.to_loki.receiver]
+}
+
+
+// ============================================================
+// 10. BLACKBOX: CHECK THAT THE TODO WEBSITE ANSWERS   (NEW)
+//     Runs inside Alloy, so no extra container is needed.
+//     Success = the site answers 200, or 401 (your site asks for a
+//     login, so getting the login prompt means nginx is up).
+// ============================================================
+
+prometheus.exporter.blackbox "web" {
+  config = "{ modules: { http_2xx: { prober: http, timeout: 5s, http: { valid_status_codes: [200, 401], preferred_ip_protocol: ip4 } } } }"
+
+  target {
+    name    = "todo-site"
+    address = "https://todo.bhusanshrestha.com.np"
+    module  = "http_2xx"
+  }
+}
+
+prometheus.scrape "blackbox" {
+  targets         = prometheus.exporter.blackbox.web.targets
+  job_name        = "blackbox"
+  scrape_interval = "30s"
+
+  forward_to = [
+    prometheus.remote_write.to_prometheus.receiver,
+  ]
+}
