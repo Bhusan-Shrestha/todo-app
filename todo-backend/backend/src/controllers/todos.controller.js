@@ -1,8 +1,25 @@
 const pool = require('../db');
-const { calculateStats } = require('../services/stats');
 
 function validDueDate(value) {
   return value === undefined || value === null || value === '' || /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function todoFilters({ completed, search, priority }, userId) {
+  const params = [userId];
+  let sql = ' WHERE user_id = $1';
+  if (completed === 'true' || completed === 'false') {
+    params.push(completed === 'true');
+    sql += ` AND completed = $${params.length}`;
+  }
+  if (search && search.trim()) {
+    params.push(`%${search.trim()}%`);
+    sql += ` AND (title ILIKE $${params.length} OR COALESCE(description, '') ILIKE $${params.length})`;
+  }
+  if (['low', 'medium', 'high'].includes(priority)) {
+    params.push(priority);
+    sql += ` AND priority = $${params.length}`;
+  }
+  return { sql, params };
 }
 
 // GET /api/todos?completed=true|false
@@ -12,43 +29,18 @@ async function getTodos(req, res, next) {
     const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 10, 1), 100);
     const offset = (page - 1) * limit;
-    const params = [req.userId];
-    let query = 'SELECT * FROM todos WHERE user_id = $1';
-
-    if (completed === 'true' || completed === 'false') {
-      params.push(completed === 'true');
-      query += ' AND completed = $2';
-    }
-    if (search && search.trim()) {
-      params.push(`%${search.trim()}%`);
-      query += ` AND (title ILIKE $${params.length} OR COALESCE(description, '') ILIKE $${params.length})`;
-    }
-    if (['low', 'medium', 'high'].includes(priority)) {
-      params.push(priority);
-      query += ` AND priority = $${params.length}`;
-    }
+    const { sql: filters, params } = todoFilters(req.query, req.userId);
     const orderBy = sort === 'due' ? 'due_date ASC NULLS LAST, created_at DESC'
       : sort === 'priority' ? "CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, created_at DESC"
       : 'created_at DESC';
-    query += ` ORDER BY ${orderBy} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-    params.push(limit, offset);
-
-    const { rows } = await pool.query(query, params);
-    const filterParams = [req.userId];
-    let countQuery = 'SELECT COUNT(*) FROM todos WHERE user_id = $1';
-    if (completed === 'true' || completed === 'false') {
-      filterParams.push(completed === 'true');
-      countQuery += ' AND completed = $2';
-    }
-    if (search && search.trim()) {
-      filterParams.push(`%${search.trim()}%`);
-      countQuery += ` AND (title ILIKE $${filterParams.length} OR COALESCE(description, '') ILIKE $${filterParams.length})`;
-    }
-    if (['low', 'medium', 'high'].includes(priority)) {
-      filterParams.push(priority);
-      countQuery += ` AND priority = $${filterParams.length}`;
-    }
-    const count = Number((await pool.query(countQuery, filterParams)).rows[0].count);
+    const itemParams = [...params, limit, offset];
+    const itemQuery = `SELECT * FROM todos${filters} ORDER BY ${orderBy} LIMIT $${itemParams.length - 1} OFFSET $${itemParams.length}`;
+    const countQuery = `SELECT COUNT(*) FROM todos${filters}`;
+    const [{ rows }, countResult] = await Promise.all([
+      pool.query(itemQuery, itemParams),
+      pool.query(countQuery, params),
+    ]);
+    const count = Number(countResult.rows[0].count);
     res.json({ items: rows, pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) } });
   } catch (err) {
     next(err);
@@ -161,10 +153,28 @@ async function clearCompleted(req, res, next) {
 async function getTodoStats(req, res, next) {
   try {
     const { rows } = await pool.query(
-      'SELECT id, title, completed, created_at FROM todos WHERE user_id = $1',
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE completed = TRUE)::int AS completed,
+         (SELECT json_build_object('id', id, 'title', title, 'created_at', created_at)
+          FROM todos
+          WHERE user_id = $1 AND completed = FALSE
+          ORDER BY created_at ASC
+          LIMIT 1) AS oldest_pending
+       FROM todos
+       WHERE user_id = $1`,
       [req.userId]
     );
-    res.json(calculateStats(rows));
+    const summary = rows[0];
+    const total = summary.total;
+    const completed = summary.completed;
+    res.json({
+      total,
+      completed,
+      pending: total - completed,
+      completionRate: total === 0 ? 0 : Math.round((completed / total) * 1000) / 10,
+      oldestPending: summary.oldest_pending,
+    });
   } catch (err) {
     next(err);
   }

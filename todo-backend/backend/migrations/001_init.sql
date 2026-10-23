@@ -51,3 +51,5 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE INDEX IF NOT EXISTS idx_todos_completed ON todos(completed);
 CREATE INDEX IF NOT EXISTS idx_todos_user_created ON todos(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_todos_user_due_date ON todos(user_id, due_date);
+CREATE INDEX IF NOT EXISTS idx_todos_user_completed ON todos(user_id, completed);
+CREATE INDEX IF NOT EXISTS idx_todos_user_priority_created ON todos(user_id, priority, created_at DESC);
