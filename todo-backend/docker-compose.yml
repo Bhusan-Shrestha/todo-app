@@ -1,68 +1,93 @@
 services:
-  backend:
-    image: bhushanportpro/todo-backend:v1
-
-    deploy:
-      restart_policy:
-        condition: any
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 768M
-
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tododb
+      POSTGRES_USER: todo
+      POSTGRES_PASSWORD: todo-access
     ports:
-      - target: 4000
-        published: 4000
-        protocol: tcp
-        mode: host
-
-    env_file:
-      - .env
-
-    environment:
-      STATS_SERVICE_URL: http://todo-stats:5000
-
-    networks:
-      - otel-net
-      - app-net 
-  todo-stats:
-    image: bhushanportpro/todo-stats:v1
-
-    deploy:
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == worker      
-        preferences:
-          - spread: node.id        
-      restart_policy:
-        condition: any
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
-
-    environment:
-      PORT: "5000"
-      NODE_ENV: production
-      NODE_NAME: "{{.Node.Hostname}}"  
-
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5000/health"]
-      interval: 15s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
-
+      test: ["CMD-SHELL", "pg_isready -U todo -d tododb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
-      - app-net
+      - local-app-net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - local-app-net
+
+  migrate:
+    build:
+      context: ./backend
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: todo
+      PGPASSWORD: todo-access
+      PGDATABASE: tododb
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npm run migrate
+    networks:
+      - local-app-net
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: "4000"
+      NODE_ENV: development
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: todo
+      PGPASSWORD: todo-access
+      PGDATABASE: tododb
+      REDIS_URL: redis://redis:6379
+      SESSION_TTL_SECONDS: "604800"
+      FRONTEND_ORIGIN: http://localhost:3000
+      API_ORIGIN: http://localhost:4000
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - local-app-net
+
+volumes:
+  postgres-data:
+  redis-data:
 
 networks:
-  otel-net:
-    external: true
-  app-net:
-    driver: overlay
+  local-app-net:
+    driver: bridge

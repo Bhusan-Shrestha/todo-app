@@ -7,7 +7,7 @@
     "start": "node -r ./src/tracing.js src/server.js",
     "dev": "nodemon src/server.js",
     "migrate": "node src/migrate.js",
-    "test": "node --check src/server.js && node --check src/db.js && node --check src/migrate.js && node --check src/controllers/todos.controller.js && node --check src/routes/todos.routes.js && node --check src/services/stats.client.js"
+    "test": "node --check src/server.js && node --check src/db.js && node --check src/migrate.js && node --check src/redis.js && node --check src/middleware/auth.js && node --check src/controllers/auth.controller.js && node --check src/controllers/todos.controller.js && node --check src/routes/auth.routes.js && node --check src/routes/todos.routes.js && node --check src/services/stats.js && node --check src/services/oauth.js"
   },
   "dependencies": {
     "@opentelemetry/auto-instrumentations-node": "^0.80.0",
@@ -17,7 +17,9 @@
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "bcryptjs": "^2.4.3",
     "helmet": "^7.1.0",
+    "redis": "^4.7.0",
     "morgan": "^1.10.0",
     "pg": "^8.12.0"
   },

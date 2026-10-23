@@ -1,0 +1,179 @@
+const crypto = require("crypto");
+const pool = require("../db");
+const { redis } = require("../redis");
+const { createSession } = require("../controllers/auth.controller");
+
+const STATE_TTL_SECONDS = 600;
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
+
+const providers = {
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: "openid email profile",
+  },
+  github: {
+    clientId: process.env.GITHUB_CLIENT_ID,
+    clientSecret: process.env.GITHUB_CLIENT_SECRET,
+    authorizationUrl: "https://github.com/login/oauth/authorize",
+    tokenUrl: "https://github.com/login/oauth/access_token",
+    scopes: "read:user user:email",
+  },
+};
+
+function callbackUrl(provider) {
+  return `${process.env.API_ORIGIN || "http://localhost:4000"}/api/auth/oauth/${provider}/callback`;
+}
+
+function providerConfig(provider) {
+  const config = providers[provider];
+  if (!config || !config.clientId || !config.clientSecret) {
+    const error = new Error(`${provider} OAuth is not configured`);
+    error.status = 503;
+    throw error;
+  }
+  return config;
+}
+
+function redirectError(message) {
+  return `${FRONTEND_ORIGIN}/?oauth_error=${encodeURIComponent(message)}`;
+}
+
+async function startOAuth(req, res, next) {
+  try {
+    const { provider } = req.params;
+    const config = providerConfig(provider);
+    const state = crypto.randomBytes(32).toString("hex");
+    await redis.set(`oauth-state:${state}`, provider, { EX: STATE_TTL_SECONDS });
+
+    const params = new URLSearchParams({
+      client_id: config.clientId,
+      redirect_uri: callbackUrl(provider),
+      response_type: "code",
+      scope: config.scopes,
+      state,
+    });
+    res.redirect(`${config.authorizationUrl}?${params}`);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function exchangeCode(provider, code) {
+  const config = providerConfig(provider);
+  const response = await fetch(config.tokenUrl, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      code,
+      redirect_uri: callbackUrl(provider),
+    }),
+  });
+  const body = await response.json();
+  if (!response.ok || !body.access_token) throw new Error(body.error_description || body.error || "OAuth token exchange failed");
+  return body.access_token;
+}
+
+async function fetchProfile(provider, accessToken) {
+  if (provider === "google") {
+    const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const profile = await response.json();
+    if (!response.ok || !profile.sub || !profile.email || profile.email_verified !== true) {
+      throw new Error("Google did not return a verified email");
+    }
+    return { providerId: profile.sub, email: profile.email, name: profile.name || profile.email.split("@")[0] };
+  }
+
+  const profileResponse = await fetch("https://api.github.com/user", {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json", "User-Agent": "todo-app" },
+  });
+  const profile = await profileResponse.json();
+  const emailResponse = await fetch("https://api.github.com/user/emails", {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json", "User-Agent": "todo-app" },
+  });
+  const emails = await emailResponse.json();
+  const email = Array.isArray(emails) && emails.find((item) => item.primary && item.verified)?.email;
+  if (!profileResponse.ok || !profile.id || !email) throw new Error("GitHub did not return a verified email");
+  return { providerId: String(profile.id), email, name: profile.name || profile.login || email.split("@")[0] };
+}
+
+async function findOrCreateUser(provider, profile) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const linked = await client.query(
+      `SELECT u.id, u.name, u.email FROM oauth_accounts oa
+       JOIN users u ON u.id = oa.user_id
+       WHERE oa.provider = $1 AND oa.provider_user_id = $2`,
+      [provider, profile.providerId],
+    );
+    let user = linked.rows[0];
+    if (!user) {
+      const existing = await client.query("SELECT id, name, email FROM users WHERE email = $1", [profile.email.toLowerCase()]);
+      if (existing.rows[0]) {
+        user = existing.rows[0];
+      } else {
+        const created = await client.query(
+          "INSERT INTO users (name, email, password_hash) VALUES ($1, $2, NULL) RETURNING id, name, email",
+          [profile.name.trim().slice(0, 100), profile.email.toLowerCase()],
+        );
+        user = created.rows[0];
+      }
+      await client.query(
+        "INSERT INTO oauth_accounts (user_id, provider, provider_user_id) VALUES ($1, $2, $3)",
+        [user.id, provider, profile.providerId],
+      );
+    }
+    await client.query("COMMIT");
+    return user;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function handleOAuthCallback(req, res) {
+  const { provider } = req.params;
+  const { code, state, error } = req.query;
+  try {
+    if (error) throw new Error("OAuth sign-in was cancelled");
+    if (!providers[provider] || !code || !state) throw new Error("Invalid OAuth callback");
+    const expectedProvider = await redis.get(`oauth-state:${state}`);
+    await redis.del(`oauth-state:${state}`);
+    if (expectedProvider !== provider) throw new Error("Invalid or expired OAuth state");
+
+    const profile = await fetchProfile(provider, await exchangeCode(provider, code));
+    const user = await findOrCreateUser(provider, profile);
+    const handoff = crypto.randomBytes(32).toString("hex");
+    await redis.set(`oauth-result:${handoff}`, String(user.id), { EX: 60 });
+    return res.redirect(`${FRONTEND_ORIGIN}/?oauth_code=${encodeURIComponent(handoff)}`);
+  } catch (err) {
+    return res.redirect(redirectError(err.message || "OAuth sign-in failed"));
+  }
+}
+
+async function exchangeOAuthCode(req, res, next) {
+  try {
+    const { code } = req.body;
+    if (!code || !/^[a-f0-9]{64}$/.test(code)) return res.status(400).json({ error: "Invalid OAuth code" });
+    const userId = await redis.get(`oauth-result:${code}`);
+    if (!userId) return res.status(400).json({ error: "OAuth code is invalid or expired" });
+    await redis.del(`oauth-result:${code}`);
+    const token = await createSession(userId);
+    const { rows } = await pool.query("SELECT id, name, email FROM users WHERE id = $1", [userId]);
+    if (!rows[0]) return res.status(401).json({ error: "User not found" });
+    res.json({ user: rows[0], token });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { startOAuth, handleOAuthCallback, exchangeOAuthCode };

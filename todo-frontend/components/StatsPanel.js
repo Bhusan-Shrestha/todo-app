@@ -20,8 +20,7 @@ export default function StatsPanel() {
           setError(false);
         }
       } catch (err) {
-        // Stats are a "nice to have" -- if the microservice is down, hide
-        // the panel quietly instead of showing an error over the app.
+        // Stats are optional, so keep the dashboard usable if they cannot load.
         if (!cancelled) setError(true);
       }
     }
@@ -38,7 +37,10 @@ export default function StatsPanel() {
 
   return (
     <aside className="stats-panel">
-      <h2 className="stats-panel-title">Stats</h2>
+      <div className="stats-panel-heading">
+        <h2 className="stats-panel-title">Your progress</h2>
+        <span className="stats-panel-caption">All tasks</span>
+      </div>
 
       <div className="stats-row">
         <span className="stats-label">Total</span>

@@ -1,0 +1,41 @@
+services:
+  backend:
+    image: bhushanportpro/todo-backend:v1
+
+    deploy:
+      restart_policy:
+        condition: any
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+
+    ports:
+      - target: 4000
+        published: 4000
+        protocol: tcp
+        mode: host
+
+    env_file:
+      - .env
+
+    environment:
+      REDIS_URL: redis://redis:6379
+
+    networks:
+      - otel-net
+      - app-net
+  redis:
+    image: redis:7-alpine
+    networks:
+      - app-net
+
+networks:
+  otel-net:
+    external: true
+  app-net:
+    driver: overlay

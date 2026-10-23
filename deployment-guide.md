@@ -1,23 +1,31 @@
 # todo-backend Deployment Guide (Docker Swarm)
 
-This covers how the stack is structured and the steps to build, push, and deploy it on the swarm.
+This covers how the monolithic backend stack is structured and the steps to build, push, and deploy it on the swarm.
 
 ## Overview
 
-The stack has three services:
+The stack has two application services plus the registry:
 
-- **registry** — a private Docker registry running on the manager node. Stores the `todo-backend` and `todo-stats` images so worker nodes can pull them without SSH access to the manager.
-- **backend** — the main API. Runs only on the manager, bound directly to host port 4000 (`mode: host`). Talks to Postgres on the host machine and to `todo-stats` over the internal `app-net` overlay network.
-- **todo-stats** — a microservice. Runs only on worker nodes, spread across them, with no published ports — it's reachable only from inside the swarm network.
+- **registry** — a private Docker registry running on the manager node. Stores the `todo-backend` image so worker nodes can pull it without SSH access to the manager.
+- **backend** — the monolithic API. Runs only on the manager, bound directly to host port 4000 (`mode: host`). It talks to Postgres on the host machine and calculates todo statistics locally.
+- **redis** — the session store used by the backend.
 
-Images for `backend` and `todo-stats` are not pulled from Docker Hub. They're built locally on the manager and pushed to the private registry, then Swarm pulls them from there onto whichever node needs them.
+The `backend` image is not pulled from Docker Hub. It is built locally on the manager and pushed to the private registry, then Swarm pulls it from there.
 
 ## Prerequisites
 
 - `.env` file in the project root with:
   ```
   REGISTRY_HOST=<manager-ip>:5000
+  API_ORIGIN=http://<public-api-host>:4000
+  GOOGLE_CLIENT_ID=<google-client-id>
+  GOOGLE_CLIENT_SECRET=<google-client-secret>
+  GITHUB_CLIENT_ID=<github-client-id>
+  GITHUB_CLIENT_SECRET=<github-client-secret>
   ```
+- Configure these OAuth callback URLs in each provider:
+  - Google: `<API_ORIGIN>/api/auth/oauth/google/callback`
+  - GitHub: `<API_ORIGIN>/api/auth/oauth/github/callback`
 - Every node in the swarm (manager and workers) must trust this registry as insecure, since it's plain HTTP, not HTTPS. On each node:
   ```bash
   sudo mkdir -p /etc/docker
@@ -43,16 +51,13 @@ echo "$REGISTRY_HOST"   # sanity check — should print 10.2.1.152:5000
 docker stack deploy -c docker-compose.yml todo-backend
 ```
 
-On a first-time deploy, `backend` and `todo-stats` will fail to start here — that's expected, since the registry is empty. This step's real purpose is to bring the `registry` service up.
+On a first-time deploy, `backend` will fail to start here — that's expected, since the registry is empty. This step's real purpose is to bring the `registry` service up.
 
 ### 3. Build and push the images
 
 ```bash
 docker build -t $REGISTRY_HOST/todo-backend:local ./backend
 docker push $REGISTRY_HOST/todo-backend:local
-
-docker build -t $REGISTRY_HOST/todo-stats:local ./stats-service
-docker push $REGISTRY_HOST/todo-stats:local
 ```
 
 Verify both landed in the registry:
@@ -61,7 +66,7 @@ Verify both landed in the registry:
 curl http://$REGISTRY_HOST/v2/_catalog
 ```
 
-Expected output: `{"repositories":["todo-backend","todo-stats"]}`
+Expected output includes `todo-backend`.
 
 ### 4. Redeploy
 
@@ -81,7 +86,7 @@ All tasks should show `Running`. `Ignoring unsupported options: build` in the de
 
 ## Redeploying After Code Changes
 
-Whenever `backend` or `stats-service` code changes, repeat steps 3 and 4 (build, push, `docker stack deploy`). The `update_config` on `todo-stats` (`order: start-first`) means it starts the new task before killing the old one, for a rolling update with no downtime.
+Whenever backend code changes, repeat steps 3 and 4 (build, push, `docker stack deploy`).
 
 ## Troubleshooting
 
@@ -96,3 +101,21 @@ The node doesn't trust the registry as insecure. Run the `insecure-registries` s
 
 **Worker can't pull but manager can**
 The insecure-registries setting is per-node. It must be set on every worker as well as the manager — check `/etc/docker/daemon.json` on the failing worker specifically.
+
+## Local development stack
+
+For local development, use `todo-backend/docker-compose.yml`. It runs
+PostgreSQL, Redis, the monolithic backend, and the database migration job:
+
+```bash
+cd todo-backend
+docker compose up --build
+```
+
+The local API is available at `http://localhost:4000`. PostgreSQL and Redis
+data are stored in named Docker volumes. To stop the services without deleting
+data:
+
+```bash
+docker compose down
+```
