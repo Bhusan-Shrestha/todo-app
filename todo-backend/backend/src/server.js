@@ -29,9 +29,23 @@ app.use(
 app.use(express.json({ limit: "100kb" }));
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 app.use((req, res, next) => {
-  const allowedOrigin = process.env.FRONTEND_ORIGIN;
+  const configuredOrigins = (process.env.FRONTEND_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+
+  const allowedOrigins = new Set([
+    ...configuredOrigins,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+  ]);
+
   const requestOrigin = req.get("origin");
-  if (requestOrigin && requestOrigin === allowedOrigin) {
+  const normalizedOrigin = requestOrigin ? requestOrigin.replace(/\/+$/, "") : null;
+
+  if (normalizedOrigin && (allowedOrigins.has(normalizedOrigin) || allowedOrigins.has("*"))) {
     res.header("Access-Control-Allow-Origin", requestOrigin);
     res.header("Vary", "Origin");
   }

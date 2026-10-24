@@ -4,7 +4,29 @@ const { redis } = require("../redis");
 const { createSession } = require("../controllers/auth.controller");
 
 const STATE_TTL_SECONDS = 600;
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
+
+const FRONTEND_ORIGIN = (process.env.FRONTEND_ORIGIN || "http://localhost:3000")
+  .split(",")[0]
+  .trim()
+  .replace(/\/+$/, "");
+
+function sanitizeReturnTo(url) {
+  if (!url) return FRONTEND_ORIGIN;
+  try {
+    const origin = new URL(url).origin.replace(/\/+$/, "");
+    const allowed = (process.env.FRONTEND_ORIGIN || "")
+      .split(",")
+      .map((o) => o.trim().replace(/\/+$/, ""))
+      .concat([
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+      ]);
+    if (allowed.includes(origin)) return origin;
+  } catch (_) {}
+  return FRONTEND_ORIGIN;
+}
 
 const providers = {
   google: {
@@ -24,7 +46,7 @@ const providers = {
 };
 
 function callbackUrl(provider) {
-  return `${process.env.API_ORIGIN || "http://localhost:4000"}/api/auth/oauth/${provider}/callback`;
+  return `${(process.env.API_ORIGIN || "http://localhost:4000").replace(/\/+$/, "")}/api/auth/oauth/${provider}/callback`;
 }
 
 function providerConfig(provider) {
@@ -37,20 +59,27 @@ function providerConfig(provider) {
   return config;
 }
 
-function redirectError(message) {
-  return `${FRONTEND_ORIGIN}/?oauth_error=${encodeURIComponent(message)}`;
+function redirectError(message, targetOrigin = FRONTEND_ORIGIN) {
+  return `${targetOrigin}/?oauth_error=${encodeURIComponent(message)}`;
 }
 
 async function startOAuth(req, res, next) {
   try {
     const { provider } = req.params;
     const config = providerConfig(provider);
+    const returnTo = sanitizeReturnTo(req.query.return_to || req.get("referer"));
+    const redirectUri = callbackUrl(provider);
+
     const state = crypto.randomBytes(32).toString("hex");
-    await redis.set(`oauth-state:${state}`, provider, { EX: STATE_TTL_SECONDS });
+    await redis.set(
+      `oauth-state:${state}`,
+      JSON.stringify({ provider, returnTo, redirectUri }),
+      { EX: STATE_TTL_SECONDS },
+    );
 
     const params = new URLSearchParams({
       client_id: config.clientId,
-      redirect_uri: callbackUrl(provider),
+      redirect_uri: redirectUri,
       response_type: "code",
       scope: config.scopes,
       state,
@@ -61,7 +90,7 @@ async function startOAuth(req, res, next) {
   }
 }
 
-async function exchangeCode(provider, code) {
+async function exchangeCode(provider, code, redirectUri) {
   const config = providerConfig(provider);
   const response = await fetch(config.tokenUrl, {
     method: "POST",
@@ -70,7 +99,7 @@ async function exchangeCode(provider, code) {
       client_id: config.clientId,
       client_secret: config.clientSecret,
       code,
-      redirect_uri: callbackUrl(provider),
+      redirect_uri: redirectUri || callbackUrl(provider),
     }),
   });
   const body = await response.json();
@@ -143,20 +172,32 @@ async function findOrCreateUser(provider, profile) {
 async function handleOAuthCallback(req, res) {
   const { provider } = req.params;
   const { code, state, error } = req.query;
+  let targetOrigin = FRONTEND_ORIGIN;
   try {
     if (error) throw new Error("OAuth sign-in was cancelled");
     if (!providers[provider] || !code || !state) throw new Error("Invalid OAuth callback");
-    const expectedProvider = await redis.get(`oauth-state:${state}`);
-    await redis.del(`oauth-state:${state}`);
-    if (expectedProvider !== provider) throw new Error("Invalid or expired OAuth state");
 
-    const profile = await fetchProfile(provider, await exchangeCode(provider, code));
+    const stateRaw = await redis.get(`oauth-state:${state}`);
+    await redis.del(`oauth-state:${state}`);
+    if (!stateRaw) throw new Error("Invalid or expired OAuth state");
+
+    let stateData;
+    try {
+      stateData = JSON.parse(stateRaw);
+    } catch (_) {
+      stateData = { provider: stateRaw, returnTo: FRONTEND_ORIGIN };
+    }
+
+    if (stateData.provider !== provider) throw new Error("Invalid or expired OAuth state");
+    targetOrigin = stateData.returnTo || FRONTEND_ORIGIN;
+
+    const profile = await fetchProfile(provider, await exchangeCode(provider, code, stateData.redirectUri));
     const user = await findOrCreateUser(provider, profile);
     const handoff = crypto.randomBytes(32).toString("hex");
     await redis.set(`oauth-result:${handoff}`, String(user.id), { EX: 60 });
-    return res.redirect(`${FRONTEND_ORIGIN}/?oauth_code=${encodeURIComponent(handoff)}`);
+    return res.redirect(`${targetOrigin}/?oauth_code=${encodeURIComponent(handoff)}`);
   } catch (err) {
-    return res.redirect(redirectError(err.message || "OAuth sign-in failed"));
+    return res.redirect(redirectError(err.message || "OAuth sign-in failed", targetOrigin));
   }
 }
 

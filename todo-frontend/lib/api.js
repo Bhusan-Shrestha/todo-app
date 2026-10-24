@@ -1,4 +1,5 @@
 function getApiUrl() {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
   if (process.env.API_URL) return process.env.API_URL;
   if (typeof window !== "undefined" &&
       (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
@@ -8,7 +9,9 @@ function getApiUrl() {
 }
 
 export function getOAuthUrl(provider) {
-  return `${getApiUrl()}/auth/oauth/${provider}`;
+  const returnTo = typeof window !== "undefined" ? window.location.origin : "";
+  const params = returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : "";
+  return `${getApiUrl()}/auth/oauth/${provider}${params}`;
 }
 
 export const exchangeOAuthCode = (code) =>
@@ -68,3 +71,7 @@ export const toggleTodo = (id) => request(`/todos/${id}/toggle`, { method: "PATC
 export const deleteTodo = (id) => request(`/todos/${id}`, { method: "DELETE" });
 export const clearCompleted = () => request("/todos/completed", { method: "DELETE" });
 export const getStats = () => request("/todos/stats");
+export const updateProfile = (data) =>
+  request("/auth/profile", { method: "PATCH", body: JSON.stringify(data) });
+export const changePassword = (data) =>
+  request("/auth/change-password", { method: "POST", body: JSON.stringify(data) });

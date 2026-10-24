@@ -157,32 +157,32 @@ export default function HomePage() {
         <button className="logout-button" onClick={async () => { await logout(); window.localStorage.removeItem('todo_token'); setUser(null); }}>Log out</button>
       </header>
       <div className="page-layout">
-      <main className="container">
-        <TodoForm onAdd={handleAdd} />
-        <div className="todo-toolbar">
-          <div className="search-wrap"><span aria-hidden="true">⌕</span><input className="search-input" placeholder="Search your tasks..." value={filters.search}
-            onChange={(e) => setFilters({ ...filters, search: e.target.value })} /></div>
-          <select value={filters.completed} onChange={(e) => setFilters({ ...filters, completed: e.target.value })}>
-            <option value="">All statuses</option><option value="false">Active</option><option value="true">Completed</option>
-          </select>
-          <select value={filters.priority} onChange={(e) => setFilters({ ...filters, priority: e.target.value })}>
-            <option value="">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
-          </select>
-          <select value={filters.sort} onChange={(e) => setFilters({ ...filters, sort: e.target.value })}>
-            <option value="created">Newest</option><option value="due">Due date</option><option value="priority">Priority</option>
-          </select>
-          <button className="secondary-button" onClick={handleClearCompleted}>Clear completed</button>
-        </div>
-        {loading ? <p>Loading...</p> : (
-          <TodoList todos={todos} onToggle={handleToggle} onDelete={handleDelete} onUpdate={handleUpdate} />
-        )}
-        {pagination.totalPages > 1 && <div className="pagination">
-          <button disabled={page <= 1} onClick={() => { setPage(page - 1); loadTodos(page - 1); }}>Previous</button>
-          <span>Page {page} of {pagination.totalPages}</span>
-          <button disabled={page >= pagination.totalPages} onClick={() => { setPage(page + 1); loadTodos(page + 1); }}>Next</button>
-        </div>}
-      </main>
-      <StatsPanel />
+        <main className="container">
+          <TodoForm onAdd={handleAdd} />
+          <div className="todo-toolbar">
+            <div className="search-wrap"><span aria-hidden="true">⌕</span><input className="search-input" placeholder="Search your tasks..." value={filters.search}
+              onChange={(e) => setFilters({ ...filters, search: e.target.value })} /></div>
+            <select value={filters.completed} onChange={(e) => setFilters({ ...filters, completed: e.target.value })}>
+              <option value="">All statuses</option><option value="false">Active</option><option value="true">Completed</option>
+            </select>
+            <select value={filters.priority} onChange={(e) => setFilters({ ...filters, priority: e.target.value })}>
+              <option value="">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+            </select>
+            <select value={filters.sort} onChange={(e) => setFilters({ ...filters, sort: e.target.value })}>
+              <option value="created">Newest</option><option value="due">Due date</option><option value="priority">Priority</option>
+            </select>
+            <button className="secondary-button" onClick={handleClearCompleted}>Clear completed</button>
+          </div>
+          {loading ? <p>Loading...</p> : (
+            <TodoList todos={todos} onToggle={handleToggle} onDelete={handleDelete} onUpdate={handleUpdate} />
+          )}
+          {pagination.totalPages > 1 && <div className="pagination">
+            <button disabled={page <= 1} onClick={() => { setPage(page - 1); loadTodos(page - 1); }}>Previous</button>
+            <span>Page {page} of {pagination.totalPages}</span>
+            <button disabled={page >= pagination.totalPages} onClick={() => { setPage(page + 1); loadTodos(page + 1); }}>Next</button>
+          </div>}
+        </main>
+        <StatsPanel />
       </div>
     </div>
   );

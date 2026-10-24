@@ -72,4 +72,92 @@ async function logout(req, res, next) {
   }
 }
 
-module.exports = { register, login, me, logout, createSession };
+async function updateProfile(req, res, next) {
+  try {
+    const { name, email } = req.body;
+    if (!name && !email) {
+      return res.status(400).json({ error: "Name or email is required" });
+    }
+
+    const { rows: userRows } = await pool.query("SELECT * FROM users WHERE id = $1", [req.userId]);
+    if (userRows.length === 0) return res.status(404).json({ error: "User not found" });
+    const user = userRows[0];
+
+    let newName = user.name;
+    if (name && name.trim()) {
+      newName = name.trim().slice(0, 100);
+    }
+
+    let newEmail = user.email;
+    if (email && email.trim()) {
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        return res.status(400).json({ error: "Invalid email format" });
+      }
+      if (normalizedEmail !== user.email) {
+        const existing = await pool.query("SELECT id FROM users WHERE email = $1 AND id != $2", [
+          normalizedEmail,
+          req.userId,
+        ]);
+        if (existing.rows.length > 0) {
+          return res.status(409).json({ error: "Email is already registered to another account" });
+        }
+        newEmail = normalizedEmail;
+      }
+    }
+
+    const { rows } = await pool.query(
+      "UPDATE users SET name = $1, email = $2 WHERE id = $3 RETURNING id, name, email",
+      [newName, newEmail, req.userId],
+    );
+
+    res.json({ user: publicUser(rows[0]), message: "Profile updated successfully" });
+  } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ error: "Email is already registered to another account" });
+    next(err);
+  }
+}
+
+async function changePassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword, confirmNewPassword } = req.body;
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters" });
+    }
+    if (newPassword !== confirmNewPassword) {
+      return res.status(400).json({ error: "New passwords do not match" });
+    }
+
+    const { rows } = await pool.query("SELECT * FROM users WHERE id = $1", [req.userId]);
+    if (rows.length === 0) return res.status(404).json({ error: "User not found" });
+    const user = rows[0];
+
+    // If user has an existing password (not OAuth-only account without password)
+    if (user.password_hash) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: "Current password is required" });
+      }
+      const match = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!match) {
+        return res.status(400).json({ error: "Current password is incorrect" });
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, req.userId]);
+
+    res.json({ message: "Password updated successfully" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  register,
+  login,
+  me,
+  logout,
+  createSession,
+  updateProfile,
+  changePassword,
+};
