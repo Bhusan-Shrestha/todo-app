@@ -1,11 +1,19 @@
 function getApiUrl() {
-  if (process.env.API_URL) return process.env.API_URL;
-  if (typeof window !== "undefined" &&
-      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "");
+  }
+
+  if (
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1")
+  ) {
     return "http://localhost:4000/api";
   }
+
   return "/api";
 }
+
 
 export function getOAuthUrl(provider) {
   const returnTo = typeof window !== "undefined" ? window.location.origin : "";
