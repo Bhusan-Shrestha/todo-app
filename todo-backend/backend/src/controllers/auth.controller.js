@@ -2,7 +2,7 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const pool = require("../db");
 const { redis } = require("../redis");
-import * as z from "zod";
+const { z } = require("zod");
 
 const SESSION_TTL_SECONDS = Number(process.env.SESSION_TTL_SECONDS) || 604800;
 
@@ -47,20 +47,29 @@ async function register(req, res, next) {
 
 async function login(req, res, next) {
   try {
-    const userSchema = z.object({
-      name: z.string().min(1).max(100),
-      email: z.string().email(),
-      password: z.string().min(8).regex(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*#?&]{8,}$/, "Password must contain at least one letter and one number"),
-      confirmPassword: z.string().min(8),
+    const loginSchema = z.object({
+      email: z.string().trim().email(),
+      password: z.string().min(1),
     });
-    const { email, password } = userSchema.parse(req.body);
-    if (!email || !password) return res.status(400).json({ error: "email and password are required" });
-    const { rows } = await pool.query("SELECT * FROM users WHERE email = $1", [email.trim().toLowerCase()]);
-    if (rows.length === 0 || !(await bcrypt.compare(password, rows[0].password_hash))) {
-      return res.status(401).json({ error: "Invalid email or password" });
+    const { email, password } = loginSchema.parse(req.body);
+    const { rows } = await pool.query(
+      "SELECT * FROM users WHERE email = $1",
+      [email.toLowerCase()]
+    );
+    if (
+      rows.length === 0 ||
+      !rows[0].password_hash ||
+      !(await bcrypt.compare(password, rows[0].password_hash))
+    ) {
+      return res.status(401).json({
+        error: "Invalid email or password",
+      });
     }
     const token = await createSession(rows[0].id);
-    res.json({ user: publicUser(rows[0]), token });
+    return res.json({
+      user: publicUser(rows[0]),
+      token,
+    });
   } catch (err) {
     next(err);
   }
