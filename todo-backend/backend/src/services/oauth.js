@@ -45,7 +45,16 @@ const providers = {
   },
 };
 
-function callbackUrl(provider) {
+function callbackUrl(provider, req) {
+  if (process.env.OAUTH_CALLBACK_ORIGIN) {
+    return `${process.env.OAUTH_CALLBACK_ORIGIN.replace(/\/+$/, "")}/api/auth/oauth/${provider}/callback`;
+  }
+  if (req) {
+    const host = req.get("host");
+    if (host && (host.startsWith("localhost") || host.startsWith("127.0.0.1"))) {
+      return `http://${host}/api/auth/oauth/${provider}/callback`;
+    }
+  }
   return `${(process.env.API_ORIGIN || "http://localhost:4000").replace(/\/+$/, "")}/api/auth/oauth/${provider}/callback`;
 }
 
@@ -68,7 +77,7 @@ async function startOAuth(req, res, next) {
     const { provider } = req.params;
     const config = providerConfig(provider);
     const returnTo = sanitizeReturnTo(req.query.return_to || req.get("referer"));
-    const redirectUri = callbackUrl(provider);
+    const redirectUri = callbackUrl(provider, req);
 
     const state = crypto.randomBytes(32).toString("hex");
     await redis.set(

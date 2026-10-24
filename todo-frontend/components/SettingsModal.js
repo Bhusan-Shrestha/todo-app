@@ -5,7 +5,7 @@ import { updateProfile, changePassword } from '../lib/api';
 
 export default function SettingsModal({ user, isOpen, onClose, onUserUpdated }) {
   const [activeTab, setActiveTab] = useState('profile');
-  const [name, setName] = useState(user?.name || '');
+  const [username, setUsername] = useState(user?.username || user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -18,7 +18,7 @@ export default function SettingsModal({ user, isOpen, onClose, onUserUpdated }) 
 
   useEffect(() => {
     if (user) {
-      setName(user.name || '');
+      setUsername(user.username || user.name || '');
       setEmail(user.email || '');
     }
   }, [user]);
@@ -41,7 +41,7 @@ export default function SettingsModal({ user, isOpen, onClose, onUserUpdated }) 
     setSavingProfile(true);
 
     try {
-      const res = await updateProfile({ name, email });
+      const res = await updateProfile({ username, email });
       setProfileMessage({ type: 'success', text: res.message || 'Profile updated successfully!' });
       if (onUserUpdated && res.user) {
         onUserUpdated(res.user);
@@ -122,15 +122,18 @@ export default function SettingsModal({ user, isOpen, onClose, onUserUpdated }) 
               )}
 
               <div className="settings-field">
-                <label htmlFor="settings-name">Full Name</label>
+                <label htmlFor="settings-username">Username</label>
                 <input
-                  id="settings-name"
+                  id="settings-username"
                   type="text"
                   required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your full name"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Choose your username"
                 />
+                <span className="field-hint">
+                  This username identifies your personal workspace.
+                </span>
               </div>
 
               <div className="settings-field">

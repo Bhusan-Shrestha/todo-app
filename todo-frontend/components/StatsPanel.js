@@ -1,39 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getStats } from '../lib/api';
-
-const REFRESH_MS = 15000; // refetch every 15s, since todos change from user actions
-
-export default function StatsPanel() {
-  const [stats, setStats] = useState(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const data = await getStats();
-        if (!cancelled) {
-          setStats(data);
-          setError(false);
-        }
-      } catch (err) {
-        // Stats are optional, so keep the dashboard usable if they cannot load.
-        if (!cancelled) setError(true);
-      }
-    }
-
-    load();
-    const interval = setInterval(load, REFRESH_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
-
-  if (error || !stats) return null;
+export default function StatsPanel({ stats }) {
+  if (!stats) return null;
 
   return (
     <aside className="stats-panel">

@@ -6,7 +6,7 @@ const { redis } = require("../redis");
 const SESSION_TTL_SECONDS = Number(process.env.SESSION_TTL_SECONDS) || 604800;
 
 function publicUser(user) {
-  return { id: user.id, name: user.name, email: user.email };
+  return { id: user.id, name: user.name, username: user.name, email: user.email };
 }
 
 async function createSession(userId) {
@@ -74,9 +74,10 @@ async function logout(req, res, next) {
 
 async function updateProfile(req, res, next) {
   try {
-    const { name, email } = req.body;
-    if (!name && !email) {
-      return res.status(400).json({ error: "Name or email is required" });
+    const { name, username, email } = req.body;
+    const incomingName = username !== undefined ? username : name;
+    if (incomingName === undefined && !email) {
+      return res.status(400).json({ error: "Username or email is required" });
     }
 
     const { rows: userRows } = await pool.query("SELECT * FROM users WHERE id = $1", [req.userId]);
@@ -84,8 +85,8 @@ async function updateProfile(req, res, next) {
     const user = userRows[0];
 
     let newName = user.name;
-    if (name && name.trim()) {
-      newName = name.trim().slice(0, 100);
+    if (incomingName && incomingName.trim()) {
+      newName = incomingName.trim().slice(0, 100);
     }
 
     let newEmail = user.email;

@@ -41,7 +41,15 @@ async function getTodos(req, res, next) {
       pool.query(countQuery, params),
     ]);
     const count = Number(countResult.rows[0].count);
-    res.json({ items: rows, pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) } });
+    res.json({
+      items: rows,
+      pagination: {
+        page,
+        limit,
+        total: count,
+        totalPages: Math.max(Math.ceil(count / limit), 1),
+      },
+    });
   } catch (err) {
     next(err);
   }
