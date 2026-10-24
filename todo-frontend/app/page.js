@@ -1,9 +1,10 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import TodoForm from '../components/TodoForm';
-import TodoList from '../components/TodoList';
-import StatsPanel from '../components/StatsPanel';
+import { useEffect, useState } from "react";
+import TodoForm from "../components/TodoForm";
+import TodoList from "../components/TodoList";
+import StatsPanel from "../components/StatsPanel";
+import Image from "next/image";
 import {
   getTodos,
   getStats,
@@ -15,22 +16,32 @@ import {
   updateTodo,
   clearCompleted,
   logout,
-} from '../lib/api';
-import AuthForm from '../components/AuthForm';
-import SettingsModal from '../components/SettingsModal';
-import ProfileMenu from '../components/ProfileMenu';
+} from "../lib/api";
+import AuthForm from "../components/AuthForm";
+import SettingsModal from "../components/SettingsModal";
+import ProfileMenu from "../components/ProfileMenu";
 
 export default function HomePage() {
   const [todos, setTodos] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [user, setUser] = useState(null);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
-  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+  });
   const [ready, setReady] = useState(false);
-  const [filters, setFilters] = useState({ search: '', completed: '', priority: '', sort: 'created' });
+  const [filters, setFilters] = useState({
+    search: "",
+    completed: "",
+    priority: "",
+    sort: "created",
+  });
   const [showSettings, setShowSettings] = useState(false);
 
   // Load stats ONLY when called explicitly (app load, add, edit, delete)
@@ -46,15 +57,22 @@ export default function HomePage() {
   // Load todos with backend pagination
   async function loadTodos(nextPage = page, nextLimit = limit) {
     try {
-      setError('');
+      setError("");
       setLoading(true);
       const data = await getTodos(nextPage, nextLimit, filters);
       setTodos(data.items || []);
-      setPagination(data.pagination || { page: nextPage, limit: nextLimit, total: 0, totalPages: 1 });
+      setPagination(
+        data.pagination || {
+          page: nextPage,
+          limit: nextLimit,
+          total: 0,
+          totalPages: 1,
+        },
+      );
       setPage(nextPage);
     } catch (err) {
       if (err.status === 401) {
-        window.localStorage.removeItem('todo_token');
+        window.localStorage.removeItem("todo_token");
         setUser(null);
         setTodos([]);
         setStats(null);
@@ -67,26 +85,34 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    document.title = 'Taskflow';
+    document.title = "Taskflow";
   }, []);
 
   useEffect(() => {
     async function restoreSession() {
       const params = new URLSearchParams(window.location.search);
-      const oauthCode = params.get('oauth_code');
-      const oauthError = params.get('oauth_error');
+      const oauthCode = params.get("oauth_code");
+      const oauthError = params.get("oauth_error");
       if (oauthCode) {
-        window.history.replaceState({}, document.title, window.location.pathname);
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname,
+        );
       }
       if (oauthError) {
         setError(oauthError);
-        window.history.replaceState({}, document.title, window.location.pathname);
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname,
+        );
       }
 
       if (oauthCode) {
         try {
           const data = await exchangeOAuthCode(oauthCode);
-          window.localStorage.setItem('todo_token', data.token);
+          window.localStorage.setItem("todo_token", data.token);
         } catch (err) {
           setError(err.message);
           setReady(true);
@@ -95,7 +121,7 @@ export default function HomePage() {
         }
       }
 
-      if (!window.localStorage.getItem('todo_token')) {
+      if (!window.localStorage.getItem("todo_token")) {
         setReady(true);
         setLoading(false);
         return;
@@ -105,11 +131,11 @@ export default function HomePage() {
         const data = await getCurrentUser();
         setUser(data.user);
       } catch (err) {
-        window.localStorage.removeItem('todo_token');
+        window.localStorage.removeItem("todo_token");
         setUser(null);
         setTodos([]);
         setStats(null);
-        setError('');
+        setError("");
         setReady(true);
         setLoading(false);
       }
@@ -128,17 +154,24 @@ export default function HomePage() {
     }
     loadTodos(1, limit);
     loadStats();
-  }, [user?.id, filters.search, filters.completed, filters.priority, filters.sort, limit]);
+  }, [
+    user?.id,
+    filters.search,
+    filters.completed,
+    filters.priority,
+    filters.sort,
+    limit,
+  ]);
 
   async function handleLogout() {
     try {
       await logout();
-    } catch (_) { }
-    window.localStorage.removeItem('todo_token');
+    } catch (_) {}
+    window.localStorage.removeItem("todo_token");
     setUser(null);
     setTodos([]);
     setStats(null);
-    setError('');
+    setError("");
   }
 
   async function handleAdd(data) {
@@ -227,8 +260,16 @@ export default function HomePage() {
     <div className="app-shell">
       <header className="app-header">
         <div className="app-brand">
-          <div className="brand-mark small">✓</div>
-          <h1 className="app-title">Taskflow</h1>
+          <div className="logo">
+            <img
+              src="/favicon.png"
+              alt="TaskFlow Logo"
+              width={40}
+              height={40}
+            />
+          </div>
+
+          <h1 className="app-title">TaskFlow</h1>
         </div>
         <div className="header-actions">
           <ProfileMenu
@@ -249,12 +290,16 @@ export default function HomePage() {
                 className="search-input"
                 placeholder="Search your tasks..."
                 value={filters.search}
-                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                onChange={(e) =>
+                  setFilters({ ...filters, search: e.target.value })
+                }
               />
             </div>
             <select
               value={filters.completed}
-              onChange={(e) => setFilters({ ...filters, completed: e.target.value })}
+              onChange={(e) =>
+                setFilters({ ...filters, completed: e.target.value })
+              }
             >
               <option value="">All statuses</option>
               <option value="false">Active</option>
@@ -262,7 +307,9 @@ export default function HomePage() {
             </select>
             <select
               value={filters.priority}
-              onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
+              onChange={(e) =>
+                setFilters({ ...filters, priority: e.target.value })
+              }
             >
               <option value="">All priorities</option>
               <option value="high">High</option>
@@ -298,7 +345,8 @@ export default function HomePage() {
             <div className="pagination-info">
               {total > 0 ? (
                 <>
-                  Showing <strong>{fromIndex}</strong> to <strong>{toIndex}</strong> of <strong>{total}</strong> tasks
+                  Showing <strong>{fromIndex}</strong> to{" "}
+                  <strong>{toIndex}</strong> of <strong>{total}</strong> tasks
                 </>
               ) : (
                 <span>No tasks in this view</span>
@@ -308,7 +356,11 @@ export default function HomePage() {
             <div className="pagination-controls">
               <div className="page-size-selector">
                 <label htmlFor="per-page-select">Per page:</label>
-                <select id="per-page-select" value={limit} onChange={handleLimitChange}>
+                <select
+                  id="per-page-select"
+                  value={limit}
+                  onChange={handleLimitChange}
+                >
                   <option value="5">5</option>
                   <option value="10">10</option>
                   <option value="20">20</option>

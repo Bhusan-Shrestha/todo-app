@@ -1,5 +1,6 @@
 'use client';
 
+import image from 'next/image';
 import { useEffect, useState } from 'react';
 import { getOAuthUrl, login, register } from '../lib/api';
 
@@ -108,7 +109,13 @@ export default function AuthForm({ onAuthenticated, initialError = '' }) {
   return (
     <main className="auth-shell">
       <section className="auth-intro">
-        <p className="eyebrow">Taskflow</p>
+        <div className="logo">
+            <img
+              src="/taskflow.png"
+              alt="TaskFlow Logo"
+              width={400}
+            />
+          </div>
         <h1>Stay organized, one task at a time.</h1>
         <p>Keep track of your daily tasks, focus on what matters, and get things done with less stress.</p>
       </section>
