@@ -227,7 +227,7 @@ export default function HomePage() {
     <div className="app-shell">
       <header className="app-header">
         <div className="app-brand">
-          <div className="brand-mark small">TF</div>
+          <div className="brand-mark small">✓</div>
           <h1 className="app-title">Taskflow</h1>
         </div>
         <div className="header-actions">
