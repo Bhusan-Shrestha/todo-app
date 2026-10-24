@@ -224,7 +224,7 @@ export default function HomePage() {
       <header className="app-header">
         <div className="app-brand">
           <div className="brand-mark small">✓</div>
-          <h1 className="app-title">Todo List</h1>
+          <h1 className="app-title">Taskflow</h1>
         </div>
         <div className="header-actions">
           <ProfileMenu

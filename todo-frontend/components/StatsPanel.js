@@ -3,11 +3,13 @@
 export default function StatsPanel({ stats }) {
   if (!stats) return null;
 
+  const rate = stats.completionRate ?? 0;
+
   return (
     <aside className="stats-panel">
       <div className="stats-panel-heading">
-        <h2 className="stats-panel-title">Your progress</h2>
-        <span className="stats-panel-caption">All tasks</span>
+        <h2 className="stats-panel-title">Progress</h2>
+        <span className="stats-panel-caption">Your tasks</span>
       </div>
 
       <div className="stats-row">
@@ -15,21 +17,32 @@ export default function StatsPanel({ stats }) {
         <span className="stats-value">{stats.total}</span>
       </div>
       <div className="stats-row">
-        <span className="stats-label">Done</span>
-        <span className="stats-value">{stats.completed}</span>
+        <span className="stats-label">Completed</span>
+        <span className="stats-value" style={{ color: 'var(--accent-emerald)' }}>{stats.completed}</span>
       </div>
       <div className="stats-row">
         <span className="stats-label">Pending</span>
-        <span className="stats-value">{stats.pending}</span>
+        <span className="stats-value" style={{ color: 'var(--brand-mid)' }}>{stats.pending}</span>
       </div>
 
       <div className="stats-rate-bar">
         <div
           className="stats-rate-fill"
-          style={{ width: `${stats.completionRate}%` }}
+          style={{ width: `${rate}%` }}
+          role="progressbar"
+          aria-valuenow={rate}
+          aria-valuemin={0}
+          aria-valuemax={100}
         />
       </div>
-      <p className="stats-rate-label">{stats.completionRate}% complete</p>
+      <p className="stats-rate-label">{rate}% complete</p>
+
+      {stats.highPriority > 0 && (
+        <div className="stats-row" style={{ marginTop: 8 }}>
+          <span className="stats-label">⚠ High priority</span>
+          <span className="stats-value" style={{ color: '#fb7185' }}>{stats.highPriority}</span>
+        </div>
+      )}
 
       {stats.oldestPending && (
         <div className="stats-oldest">
