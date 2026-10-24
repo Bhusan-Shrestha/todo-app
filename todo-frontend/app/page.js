@@ -67,6 +67,10 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    document.title = 'Taskflow';
+  }, []);
+
+  useEffect(() => {
     async function restoreSession() {
       const params = new URLSearchParams(window.location.search);
       const oauthCode = params.get('oauth_code');
@@ -223,7 +227,7 @@ export default function HomePage() {
     <div className="app-shell">
       <header className="app-header">
         <div className="app-brand">
-          <div className="brand-mark small">✓</div>
+          <div className="brand-mark small">TF</div>
           <h1 className="app-title">Taskflow</h1>
         </div>
         <div className="header-actions">

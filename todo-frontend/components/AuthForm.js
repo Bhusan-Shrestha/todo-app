@@ -1,7 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getOAuthUrl, login, register } from '../lib/api';
+
+const REMEMBER_KEY = 'taskflow_remember';
+
+function readRemembered() {
+  try {
+    const raw = window.localStorage.getItem(REMEMBER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.email) return null;
+    return { email: parsed.email, password: parsed.password || '' };
+  } catch {
+    return null;
+  }
+}
+
+function saveRemembered(email, password) {
+  window.localStorage.setItem(REMEMBER_KEY, JSON.stringify({ email, password }));
+}
+
+function clearRemembered() {
+  window.localStorage.removeItem(REMEMBER_KEY);
+}
 
 function PasswordIcon({ visible }) {
   return visible ? (
@@ -23,6 +45,19 @@ export default function AuthForm({ onAuthenticated, initialError = '' }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState(initialError);
   const [submitting, setSubmitting] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  useEffect(() => {
+    document.title = 'Taskflow';
+    const remembered = readRemembered();
+    if (!remembered) return;
+    setRememberMe(true);
+    setForm((current) => ({
+      ...current,
+      email: remembered.email,
+      password: remembered.password,
+    }));
+  }, []);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -37,6 +72,11 @@ export default function AuthForm({ onAuthenticated, initialError = '' }) {
         ? await login(form.email, form.password)
         : await register(form.name, form.email, form.password, form.confirmPassword);
       window.localStorage.setItem('todo_token', result.token);
+      if (mode === 'login' && rememberMe) {
+        saveRemembered(form.email, form.password);
+      } else {
+        clearRemembered();
+      }
       onAuthenticated(result.user);
     } catch (err) {
       setError(err.message);
@@ -46,17 +86,29 @@ export default function AuthForm({ onAuthenticated, initialError = '' }) {
   }
 
   function switchMode() {
-    setMode(mode === 'login' ? 'register' : 'login');
-    setForm({ name: '', email: '', password: '', confirmPassword: '' });
+    const next = mode === 'login' ? 'register' : 'login';
+    setMode(next);
     setShowPassword(false);
     setShowConfirmPassword(false);
     setError('');
+    if (next === 'register') {
+      setForm({ name: '', email: form.email, password: '', confirmPassword: '' });
+      return;
+    }
+    const remembered = readRemembered();
+    setForm({
+      name: '',
+      email: form.email || remembered?.email || '',
+      password: remembered?.password || '',
+      confirmPassword: '',
+    });
+    if (remembered) setRememberMe(true);
   }
 
   return (
     <main className="auth-shell">
       <section className="auth-intro">
-        <p className="eyebrow">TODO LIST APPLICATION</p>
+        <p className="eyebrow">Taskflow</p>
         <h1>Stay organized, one task at a time.</h1>
         <p>Keep track of your daily tasks, focus on what matters, and get things done with less stress.</p>
       </section>
@@ -100,6 +152,20 @@ export default function AuthForm({ onAuthenticated, initialError = '' }) {
                 </button>
               </label>
             </div>
+          )}
+          {mode === 'login' && (
+            <label className="remember-me">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setRememberMe(checked);
+                  if (!checked) clearRemembered();
+                }}
+              />
+              Remember me
+            </label>
           )}
           <button className="primary-action" type="submit" disabled={submitting}>
             {submitting ? 'Please wait...' : mode === 'login' ? 'Log in' : 'Register'}

@@ -203,7 +203,8 @@ h1, h2, h3 {
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  font-size: 16px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
 .app-title {
@@ -614,14 +615,11 @@ select:focus {
 }
 
 .todo-item input[type="checkbox"]:checked::after {
-  content: '✓';
+  content: '';
   position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: white;
-  font-size: 12px;
-  font-weight: 900;
+  inset: 5px;
+  border-radius: 2px;
+  background: white;
 }
 
 .todo-item input[type="checkbox"]:hover:not(:checked) {
@@ -791,16 +789,7 @@ select:focus {
 }
 
 .empty-state::before {
-  content: '✓';
-  display: block;
-  font-size: 48px;
-  font-weight: 900;
-  background: linear-gradient(135deg, var(--brand-from), var(--brand-to));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 16px;
-  opacity: 0.5;
+  content: none;
 }
 
 .loading-state {
@@ -1136,6 +1125,49 @@ select:focus {
   border-color: var(--border-brand);
   box-shadow: 0 0 0 4px var(--brand-subtle);
   background: var(--bg-overlay);
+}
+
+.remember-me {
+  display: flex !important;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500 !important;
+  cursor: pointer;
+  user-select: none;
+}
+
+.remember-me input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  flex-shrink: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 5px;
+  border: 2px solid var(--border-strong);
+  background: var(--bg-surface);
+  cursor: pointer;
+  position: relative;
+  box-shadow: none;
+}
+
+.remember-me input[type="checkbox"]:checked {
+  background: linear-gradient(135deg, var(--brand-from), var(--brand-to));
+  border-color: var(--brand-mid);
+}
+
+.remember-me input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 2px;
+  background: white;
+}
+
+.remember-me input[type="checkbox"]:focus {
+  box-shadow: 0 0 0 4px var(--brand-subtle);
+  background: var(--bg-surface);
 }
 
 .password-field {
