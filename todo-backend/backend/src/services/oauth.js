@@ -4,7 +4,7 @@ const { redis } = require("../redis");
 const { createSession } = require("../controllers/auth.controller");
 
 const STATE_TTL_SECONDS = 600;
-const DEPLOYED_FRONTEND_ORIGIN = "https://todo.bhusanshrestha.com.np";
+const DEPLOYED_FRONTEND_ORIGIN = "https://taskflow.bhusanshrestha.com.np";
 
 const FRONTEND_ORIGIN = (process.env.FRONTEND_ORIGIN || DEPLOYED_FRONTEND_ORIGIN)
   .split(",")[0]
