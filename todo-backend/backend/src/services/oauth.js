@@ -37,6 +37,7 @@ const providers = {
     authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
     scopes: "openid email profile",
+    grantType: "authorization_code",
   },
   github: {
     clientId: process.env.GITHUB_CLIENT_ID,
@@ -48,16 +49,38 @@ const providers = {
 };
 
 function callbackUrl(provider, req) {
-  if (process.env.OAUTH_CALLBACK_ORIGIN) {
-    return `${process.env.OAUTH_CALLBACK_ORIGIN.replace(/\/+$/, "")}/api/auth/oauth/${provider}/callback`;
+  const configuredOrigin = process.env.OAUTH_CALLBACK_ORIGIN || process.env.API_ORIGIN;
+  if (configuredOrigin) {
+    let origin;
+    try {
+      const parsed = new URL(configuredOrigin);
+      if (
+        parsed.username ||
+        parsed.password ||
+        parsed.pathname !== "/" ||
+        parsed.search ||
+        parsed.hash ||
+        (process.env.NODE_ENV === "production" && parsed.protocol !== "https:")
+      ) {
+        throw new Error();
+      }
+      origin = parsed.origin;
+    } catch (_) {
+      const error = new Error("OAuth callback origin must be a public origin without a path");
+      error.status = 500;
+      throw error;
+    }
+    return `${origin}/api/auth/oauth/${provider}/callback`;
   }
-  if (req) {
+  if (process.env.NODE_ENV !== "production" && req) {
     const host = req.get("host");
-    if (host) {
+    if (host && (host.startsWith("localhost") || host.startsWith("127.0.0.1"))) {
       return `${req.protocol}://${host}/api/auth/oauth/${provider}/callback`;
     }
   }
-  return `${(process.env.API_ORIGIN || "http://localhost:4000").replace(/\/+$/, "")}/api/auth/oauth/${provider}/callback`;
+  const error = new Error("OAuth callback origin is not configured");
+  error.status = 500;
+  throw error;
 }
 
 function providerConfig(provider) {
@@ -111,6 +134,7 @@ async function exchangeCode(provider, code, redirectUri) {
       client_secret: config.clientSecret,
       code,
       redirect_uri: redirectUri || callbackUrl(provider),
+      ...(config.grantType ? { grant_type: config.grantType } : {}),
     }),
   });
   const body = await response.json();
@@ -185,22 +209,18 @@ async function handleOAuthCallback(req, res) {
   const { code, state, error } = req.query;
   let targetOrigin = FRONTEND_ORIGIN;
   try {
-    if (error) throw new Error("OAuth sign-in was cancelled");
-    if (!providers[provider] || !code || !state) throw new Error("Invalid OAuth callback");
-
-    const stateRaw = await redis.get(`oauth-state:${state}`);
-    await redis.del(`oauth-state:${state}`);
-    if (!stateRaw) throw new Error("Invalid or expired OAuth state");
-
-    let stateData;
-    try {
-      stateData = JSON.parse(stateRaw);
-    } catch (_) {
-      stateData = { provider: stateRaw, returnTo: FRONTEND_ORIGIN };
+    if (!providers[provider] || typeof state !== "string") {
+      throw new Error("Invalid OAuth callback");
     }
 
+    const stateRaw = await redis.getDel(`oauth-state:${state}`);
+    if (!stateRaw) throw new Error("Invalid or expired OAuth state");
+
+    const stateData = JSON.parse(stateRaw);
     if (stateData.provider !== provider) throw new Error("Invalid or expired OAuth state");
     targetOrigin = stateData.returnTo || FRONTEND_ORIGIN;
+    if (error) throw new Error("OAuth sign-in was cancelled");
+    if (typeof code !== "string" || !code) throw new Error("Invalid OAuth callback");
 
     const profile = await fetchProfile(provider, await exchangeCode(provider, code, stateData.redirectUri));
     const user = await findOrCreateUser(provider, profile);
@@ -216,12 +236,11 @@ async function exchangeOAuthCode(req, res, next) {
   try {
     const { code } = req.body;
     if (!code || !/^[a-f0-9]{64}$/.test(code)) return res.status(400).json({ error: "Invalid OAuth code" });
-    const userId = await redis.get(`oauth-result:${code}`);
+    const userId = await redis.getDel(`oauth-result:${code}`);
     if (!userId) return res.status(400).json({ error: "OAuth code is invalid or expired" });
-    await redis.del(`oauth-result:${code}`);
-    const token = await createSession(userId);
     const { rows } = await pool.query("SELECT id, name, email FROM users WHERE id = $1", [userId]);
     if (!rows[0]) return res.status(401).json({ error: "User not found" });
+    const token = await createSession(userId);
     res.json({ user: rows[0], token });
   } catch (err) {
     next(err);
