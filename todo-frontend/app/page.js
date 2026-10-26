@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import TodoForm from "../components/TodoForm";
 import TodoList from "../components/TodoList";
 import StatsPanel from "../components/StatsPanel";
@@ -36,6 +36,7 @@ export default function HomePage() {
     totalPages: 1,
   });
   const [ready, setReady] = useState(false);
+  const sessionRestoreStarted = useRef(false);
   const [filters, setFilters] = useState({
     search: "",
     completed: "",
@@ -89,6 +90,9 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    if (sessionRestoreStarted.current) return;
+    sessionRestoreStarted.current = true;
+
     async function restoreSession() {
       const params = new URLSearchParams(window.location.search);
       const oauthCode = params.get("oauth_code");
