@@ -4,8 +4,9 @@ const { redis } = require("../redis");
 const { createSession } = require("../controllers/auth.controller");
 
 const STATE_TTL_SECONDS = 600;
+const DEPLOYED_FRONTEND_ORIGIN = "https://todo.bhusanshrestha.com.np";
 
-const FRONTEND_ORIGIN = (process.env.FRONTEND_ORIGIN || "http://localhost:3000")
+const FRONTEND_ORIGIN = (process.env.FRONTEND_ORIGIN || DEPLOYED_FRONTEND_ORIGIN)
   .split(",")[0]
   .trim()
   .replace(/\/+$/, "");
@@ -18,6 +19,7 @@ function sanitizeReturnTo(url) {
       .split(",")
       .map((o) => o.trim().replace(/\/+$/, ""))
       .concat([
+        DEPLOYED_FRONTEND_ORIGIN,
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:3001",
@@ -51,8 +53,8 @@ function callbackUrl(provider, req) {
   }
   if (req) {
     const host = req.get("host");
-    if (host && (host.startsWith("localhost") || host.startsWith("127.0.0.1"))) {
-      return `http://${host}/api/auth/oauth/${provider}/callback`;
+    if (host) {
+      return `${req.protocol}://${host}/api/auth/oauth/${provider}/callback`;
     }
   }
   return `${(process.env.API_ORIGIN || "http://localhost:4000").replace(/\/+$/, "")}/api/auth/oauth/${provider}/callback`;
